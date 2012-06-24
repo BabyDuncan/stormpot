@@ -16,34 +16,52 @@
 package stormpot.qpool;
 
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import stormpot.Poolable;
 import stormpot.Slot;
 import stormpot.SlotInfo;
 
 class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
+  static final int LIVE = 0;
+  static final int CLAIMED = 1;
   final BlockingQueue<QSlot<T>> live;
-  final AtomicBoolean claimed;
+  final AtomicInteger claimed;
+  final AtomicReference<Thread> owner;
   T obj;
   Exception poison;
   long created;
   long claims;
+  boolean tlrClaimed = false;
   
   public QSlot(BlockingQueue<QSlot<T>> live) {
     this.live = live;
-    this.claimed = new AtomicBoolean(true);
+    this.claimed = new AtomicInteger(CLAIMED);
+    this.owner = new AtomicReference<Thread>();
   }
   
-  public void claim() {
-    claimed.set(true);
-    claims++;
+  public boolean claim() {
+    boolean success = claimed.compareAndSet(LIVE, CLAIMED);
+    if (success) {
+      claims++;
+    }
+    return success;
   }
 
   public void release(Poolable obj) {
-    if (claimed.compareAndSet(true, false)) {
+    if (claimed.compareAndSet(CLAIMED, LIVE) && !tlrClaimed) {
       live.offer(this);
     }
+  }
+  
+  public boolean adopt() {
+    return owner.compareAndSet(null, Thread.currentThread());
+  }
+  
+  public boolean revive() {
+    owner.set(null);
+    return claimed.compareAndSet(CLAIMED, LIVE);
   }
 
   @Override
@@ -59,5 +77,17 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   @Override
   public T getPoolable() {
     return obj;
+  }
+
+  public boolean ours() {
+    return owner.get() == Thread.currentThread();
+  }
+  
+  public void disown(Thread th) {
+    owner.compareAndSet(Thread.currentThread(), th);
+  }
+  
+  public boolean ownedBy(Thread th) {
+    return owner.get() == th;
   }
 }

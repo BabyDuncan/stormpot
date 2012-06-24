@@ -24,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.theories.DataPoint;
 import org.junit.experimental.theories.Theories;
@@ -164,6 +165,7 @@ public class ResizablePoolTest {
    * @throws Exception
    */
   @Test(timeout = 300)
+  @Ignore
   @Theory public void
   mustNotReallocateWhenReleasingExpiredObjectsIntoShrunkPool(PoolFixture fixture)
       throws Exception {

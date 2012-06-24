@@ -119,8 +119,8 @@ class QAllocThread<T extends Poolable> extends Thread {
     size++;
     slot.created = System.currentTimeMillis();
     slot.claims = 0;
-    slot.claimed.set(true);
-    slot.release(slot.obj);
+    slot.revive();
+    live.offer(slot);
   }
 
   private void dealloc(QSlot<T> slot) {
@@ -134,6 +134,7 @@ class QAllocThread<T extends Poolable> extends Thread {
     }
     slot.poison = null;
     slot.obj = null;
+    slot.owner.set(null);
   }
 
   boolean await(Timeout timeout) throws InterruptedException {

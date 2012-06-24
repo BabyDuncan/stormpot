@@ -20,7 +20,11 @@ public class QueuePoolBench extends Bench {
     config.setSize(size);
     config.setExpiration(
         new TimeExpiration(objTtlMillis, TimeUnit.MILLISECONDS));
-    pool = new QueuePool<MyPoolable>(config);
+    pool = createPool(config);
+  }
+
+  protected QueuePool<MyPoolable> createPool(Config<MyPoolable> config) {
+    return new QueuePool<MyPoolable>(config);
   }
 
   @Override

@@ -46,6 +46,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
   private final BlockingQueue<QSlot<T>> dead;
   private final QAllocThread<T> allocThread;
   private final Expiration<? super T> deallocRule;
+  private final ThreadLocal<QSlot<T>> tlr;
   private volatile boolean shutdown = false;
   
   /**
@@ -55,6 +56,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
   public QueuePool(Config<T> config) {
     live = new LinkedBlockingQueue<QSlot<T>>();
     dead = new LinkedBlockingQueue<QSlot<T>>();
+    tlr = new ThreadLocal<QSlot<T>>();
     synchronized (config) {
       config.validate();
       allocThread = new QAllocThread<T>(live, dead, config);
@@ -70,11 +72,11 @@ implements LifecycledPool<T>, ResizablePool<T> {
     }
     if (slot.poison != null) {
       Exception poison = slot.poison;
-      dead.offer(slot);
+      kill(slot);
       throw new PoolException("allocation failed", poison);
     }
     if (shutdown) { // TODO racy coverage
-      dead.offer(slot);
+      kill(slot);
       throw new IllegalStateException("pool is shut down");
     }
   }
@@ -89,15 +91,19 @@ implements LifecycledPool<T>, ResizablePool<T> {
     }
     if (invalid) {
       // it's invalid - into the dead queue with it and continue looping
-      dead.offer(slot);
+      kill(slot);
       if (exception != null) {
         throw exception;
       }
-    } else {
-      // it's valid - claim it and stop looping
-      slot.claim();
     }
     return invalid;
+  }
+
+  protected void kill(QSlot<T> slot) {
+    if (!slot.ownedBy(allocThread)) {
+      slot.disown(allocThread);
+      dead.offer(slot);
+    }
   }
 
   public T claim(Timeout timeout) throws PoolException,
@@ -105,7 +111,14 @@ implements LifecycledPool<T>, ResizablePool<T> {
     if (timeout == null) {
       throw new IllegalArgumentException("timeout cannot be null");
     }
-    QSlot<T> slot;
+    QSlot<T> slot = tlr.get();
+    if (slot != null && slot.ours()) {
+      checkForPoison(slot);
+      if (!isInvalid(slot) && slot.claim()) {
+        slot.tlrClaimed = true;
+        return slot.obj;
+      }
+    }
     long deadline = timeout.getDeadline();
     do {
       long timeoutLeft = timeout.getTimeLeft(deadline);
@@ -115,7 +128,11 @@ implements LifecycledPool<T>, ResizablePool<T> {
         return null;
       }
       checkForPoison(slot);
-    } while (isInvalid(slot));
+    } while (isInvalid(slot) || !slot.claim());
+    slot.tlrClaimed = false;
+    if (slot.adopt()) {
+      tlr.set(slot);
+    }
     return slot.obj;
   }
 
