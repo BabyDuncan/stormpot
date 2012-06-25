@@ -56,7 +56,15 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
   
   public boolean takeOwnership() {
-    return owner.compareAndSet(null, Thread.currentThread());
+    Thread currentThread = Thread.currentThread();
+    if (owner.compareAndSet(null, currentThread)) {
+      return true;
+    }
+    Thread owningThread = owner.get();
+    if (!owningThread.isAlive()) {
+      return owner.compareAndSet(owningThread, currentThread);
+    }
+    return false;
   }
   
   public boolean makeLive() {
