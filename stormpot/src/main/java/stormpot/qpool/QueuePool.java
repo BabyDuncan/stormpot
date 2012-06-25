@@ -100,8 +100,8 @@ implements LifecycledPool<T>, ResizablePool<T> {
   }
 
   protected void kill(QSlot<T> slot) {
-    if (!slot.ownedBy(allocThread)) {
-      slot.disown(allocThread);
+    if (!slot.isOwnedBy(allocThread)) {
+      slot.transferOwnership(allocThread);
       dead.offer(slot);
     }
   }
@@ -112,7 +112,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
       throw new IllegalArgumentException("timeout cannot be null");
     }
     QSlot<T> slot = tlr.get();
-    if (slot != null && slot.ours()) {
+    if (slot != null && slot.isOurs()) {
       checkForPoison(slot);
       if (!isInvalid(slot) && slot.claim()) {
         slot.tlrClaimed = true;
@@ -130,7 +130,11 @@ implements LifecycledPool<T>, ResizablePool<T> {
       checkForPoison(slot);
     } while (isInvalid(slot) || !slot.claim());
     slot.tlrClaimed = false;
-    if (slot.adopt()) {
+    if (slot.takeOwnership()) {
+      QSlot<T> oldTlr = tlr.get();
+      if (oldTlr != null && oldTlr != slot && oldTlr.isOurs()) {
+        oldTlr.transferOwnership(null);
+      }
       tlr.set(slot);
     }
     return slot.obj;

@@ -119,7 +119,7 @@ class QAllocThread<T extends Poolable> extends Thread {
     size++;
     slot.created = System.currentTimeMillis();
     slot.claims = 0;
-    slot.revive();
+    slot.makeLive();
     live.offer(slot);
   }
 

@@ -55,11 +55,11 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     }
   }
   
-  public boolean adopt() {
+  public boolean takeOwnership() {
     return owner.compareAndSet(null, Thread.currentThread());
   }
   
-  public boolean revive() {
+  public boolean makeLive() {
     owner.set(null);
     return claimed.compareAndSet(CLAIMED, LIVE);
   }
@@ -79,15 +79,15 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     return obj;
   }
 
-  public boolean ours() {
+  public boolean isOurs() {
     return owner.get() == Thread.currentThread();
   }
   
-  public void disown(Thread th) {
+  public void transferOwnership(Thread th) {
     owner.compareAndSet(Thread.currentThread(), th);
   }
   
-  public boolean ownedBy(Thread th) {
+  public boolean isOwnedBy(Thread th) {
     return owner.get() == th;
   }
 }
