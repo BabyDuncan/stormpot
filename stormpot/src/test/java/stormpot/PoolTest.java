@@ -130,11 +130,36 @@ public class PoolTest {
   @Test(timeout = 300)
   @Theory public void
   claimMustReturnNullIfTimeoutElapses(PoolFixture fixture)
-  throws Exception {
+      throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(config);
     pool.claim(longTimeout); // pool is now depleted
     Poolable obj = pool.claim(shortTimeout);
     assertThat(obj, is(nullValue()));
+  }
+  
+  /**
+   * When a pool is depleted and the claimed objects are expired, then pools
+   * might be tempted to reallocate the expired objects before they are
+   * released, when someone tries to claim. This is no good — pools must
+   * guarantee that the release of an object happens before the deallocation
+   * of an object.
+   * We test for this by creating a pool of size one, with a very short TTL.
+   * Then we claim that object and let it expire. When we try to claim again
+   * before releasing the previously claimed object, the pool must give us a
+   * null back, to signal a timeout.
+   * @param fixture
+   * @throws Exception
+   */
+  @Test(timeout = 300)
+  @Theory public void
+  depletedPoolReturnsNullEvenIfClaimedObjectsAreExpired(PoolFixture fixture)
+      throws Exception {
+    Pool<GenericPoolable> pool = fixture.initPool(
+        config.setExpiration(oneMsTTL));
+    pool.claim(longTimeout); // depleted
+    spinwait(2); // claimed object now expired
+    Poolable obj = pool.claim(shortTimeout);
+    assertThat(obj, nullValue());
   }
   
   /**
@@ -170,7 +195,7 @@ public class PoolTest {
   @Test(timeout = 300)
   @Theory public void
   blockingClaimWithTimeoutMustWaitIfPoolIsEmpty(PoolFixture fixture)
-  throws Exception {
+      throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(config);
     assertNotNull("Did not deplete pool in time", pool.claim(longTimeout));
     Thread thread = fork($claim(pool, longTimeout));
@@ -214,11 +239,62 @@ public class PoolTest {
   @Test(timeout = 300)
   @Theory public void
   mustReuseAllocatedObjects(PoolFixture fixture)
-  throws Exception {
+      throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(config);
     pool.claim(longTimeout).release();
     pool.claim(longTimeout).release();
     assertThat(allocator.allocations(), is(1));
+  }
+  
+  /**
+   * Even if a thread makes multiple claims, before releasing any objects,
+   * the pool must make sure that the thread is provided with different objects.
+   * It is thus possible for a single thread to deplete a pool with many
+   * objects. We must do this because we can't tell what the objects might be
+   * used for, so this might be a perfectly valid use case, and this follows
+   * the principle of least astonishment.
+   * We test for this by claiming two objects in a row from the pool, and
+   * check that they are not the same exact object.
+   * @param fixture
+   * @throws Exception
+   */
+  @Test(timeout = 300)
+  @Theory public void
+  claimingTwoObjectsMustReturnDifferentObjects(PoolFixture fixture)
+      throws Exception {
+    config.setSize(2);
+    Pool<GenericPoolable> pool = fixture.initPool(config);
+    GenericPoolable obj1 = pool.claim(longTimeout);
+    GenericPoolable obj2 = pool.claim(longTimeout);
+    assertThat(obj2, not(sameInstance(obj1)));
+  }
+  
+  /**
+   * If a thread claims an object without releasing it for some time, and
+   * then it expires, and then it claims another object, then that second
+   * object must still be a different object from the first.
+   * We test this by configuring a very short TTL and a pool size of just two
+   * objects, and then claim them. Then we let them expire. Then we release
+   * one of the now expired objects, and claim a new one. This new object
+   * must neither be null, because the pool is no longer depleted, nor must
+   * it be any of the two previously claimed objects.
+   * @param fixture
+   * @throws Exception
+   */
+  @Test(timeout = 300)
+  @Theory public void
+  secondObjectMustBeDifferentEvenIfFirstObjectHasExpired(PoolFixture fixture)
+      throws Exception {
+    config.setSize(2).setExpiration(oneMsTTL);
+    Pool<GenericPoolable> pool = fixture.initPool(config);
+    GenericPoolable obj1 = pool.claim(longTimeout);
+    GenericPoolable obj2 = pool.claim(longTimeout);
+    spinwait(2);
+    obj1.release();
+    GenericPoolable obj3 = pool.claim(longTimeout);
+    assertThat(obj3, not(nullValue()));
+    assertThat(obj3, not(sameInstance(obj1)));
+    assertThat(obj3, not(sameInstance(obj2)));
   }
   
   /**
@@ -398,7 +474,8 @@ public class PoolTest {
    */
   @Test(timeout = 300)
   @Theory public void
-  slotInfoClaimCountMustResetIfSlotsAreReused(PoolFixture fixture) throws Exception {
+  slotInfoClaimCountMustResetIfSlotsAreReused(PoolFixture fixture)
+      throws Exception {
     final AtomicLong maxClaimCount = new AtomicLong();
     Expiration<Poolable> expiration = new Expiration<Poolable>() {
       public boolean hasExpired(SlotInfo<? extends Poolable> info) {
@@ -789,7 +866,8 @@ public class PoolTest {
         throw expectedEception;
       }
     };
-    Pool<GenericPoolable> pool = fixture.initPool(config.setAllocator(allocator));
+    config.setAllocator(allocator);
+    Pool<GenericPoolable> pool = fixture.initPool(config);
     try {
       pool.claim(longTimeout);
       fail("expected claim to throw");
@@ -826,7 +904,8 @@ public class PoolTest {
         return super.allocate(slot);
       }
     };
-    Pool<GenericPoolable> pool = fixture.initPool(config.setAllocator(allocator));
+    config.setAllocator(allocator);
+    Pool<GenericPoolable> pool = fixture.initPool(config);
     try {
       pool.claim(longTimeout);
       fail("claim should have thrown");
@@ -902,7 +981,8 @@ public class PoolTest {
         throw new RuntimeException("boo");
       }
     };
-    Pool<GenericPoolable> pool = fixture.initPool(config.setAllocator(allocator).setSize(2));
+    config.setAllocator(allocator).setSize(2);
+    Pool<GenericPoolable> pool = fixture.initPool(config);
     Poolable obj= pool.claim(longTimeout);
     pool.claim(longTimeout).release();
     obj.release();
@@ -1035,7 +1115,8 @@ public class PoolTest {
         return null;
       }
     };
-    Pool<GenericPoolable> pool = fixture.initPool(config.setAllocator(allocator));
+    config.setAllocator(allocator);
+    Pool<GenericPoolable> pool = fixture.initPool(config);
     pool.claim(longTimeout);
   }
   
@@ -1118,7 +1199,8 @@ public class PoolTest {
         return super.allocate(slot);
       }
     };
-    Pool<GenericPoolable> pool = fixture.initPool(config.setAllocator(allocator));
+    config.setAllocator(allocator);
+    Pool<GenericPoolable> pool = fixture.initPool(config);
     pool.claim(shortTimeout);
   }
   
@@ -1254,7 +1336,8 @@ public class PoolTest {
         return null;
       }
     };
-    Pool<GenericPoolable> pool = givenPoolWithFailedAllocation(fixture, allocator);
+    Pool<GenericPoolable> pool =
+        givenPoolWithFailedAllocation(fixture, allocator);
     // the shut-down procedure must complete before the test times out.
     shutdown(pool).await(longTimeout);
   }
@@ -1290,7 +1373,8 @@ public class PoolTest {
         throw new Exception("it's terrible stuff!!!");
       }
     };
-    Pool<GenericPoolable> pool = givenPoolWithFailedAllocation(fixture, allocator);
+    Pool<GenericPoolable> pool =
+        givenPoolWithFailedAllocation(fixture, allocator);
     // must complete before the test timeout:
     shutdown(pool).await(longTimeout);
   }
@@ -1337,5 +1421,5 @@ public class PoolTest {
     assertTrue(Thread.interrupted());
   }
   // NOTE: When adding, removing or modifying tests, also remember to update
-  //       the Pool javadoc - especially the part about the promises.
+  //       the Pool javadoc.
 }

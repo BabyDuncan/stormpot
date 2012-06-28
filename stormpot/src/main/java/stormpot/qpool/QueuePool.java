@@ -114,7 +114,12 @@ implements LifecycledPool<T>, ResizablePool<T> {
     QSlot<T> slot = tlr.get();
     if (slot != null && slot.isOurs()) {
       checkForPoison(slot);
-      if (!isInvalid(slot) && slot.claim()) {
+      // Attempt the claim before checking the validity, because we might
+      // already have claimed it.
+      // If we checked validity before claiming, then we might find that it
+      // had expired, and throw it in the dead queue, causing a claimed
+      // Poolable to be deallocated before it is released.
+      if (slot.claim() && !isInvalid(slot)) {
         slot.tlrClaimed = true;
         return slot.obj;
       }
@@ -128,7 +133,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
         return null;
       }
       checkForPoison(slot);
-    } while (isInvalid(slot) || !slot.claim());
+    } while (isInvalid(slot) || !slot.claim()); // TODO don't kill claimed objs
     slot.tlrClaimed = false;
     if (slot.takeOwnership()) {
       QSlot<T> oldTlr = tlr.get();

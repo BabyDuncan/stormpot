@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.theories.DataPoint;
 import org.junit.experimental.theories.Theories;
@@ -165,7 +164,6 @@ public class ResizablePoolTest {
    * @throws Exception
    */
   @Test(timeout = 300)
-  @Ignore
   @Theory public void
   mustNotReallocateWhenReleasingExpiredObjectsIntoShrunkPool(PoolFixture fixture)
       throws Exception {
@@ -178,10 +176,10 @@ public class ResizablePoolTest {
     config.setSize(startingSize);
     ResizablePool<GenericPoolable> pool = resizable(fixture);
     List<GenericPoolable> objs = new ArrayList<GenericPoolable>();
-    while (allocator.allocations() < startingSize) {
+    while (objs.size() < startingSize) {
       objs.add(pool.claim(longTimeout));
     }
-    UnitKit.spinwait(2); // wait for the objects to expire
+    UnitKit.spinwait(5); // wait for the objects to expire
     pool.setTargetSize(newSize);
     for (int i = 0; i < startingSize - newSize; i++) {
       // release the surplus expired objects back into the pool
@@ -191,5 +189,5 @@ public class ResizablePoolTest {
     // returns null (it's still depleted) and allocation count stays put
     assertThat(pool.claim(shortTimeout), nullValue());
     assertThat(allocator.allocations(), is(startingSize));
-  } // TODO racy?? I don't know... :(
+  }
 }

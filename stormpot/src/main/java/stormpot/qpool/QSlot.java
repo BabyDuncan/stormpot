@@ -92,7 +92,8 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
   
   public void transferOwnership(Thread th) {
-    owner.compareAndSet(Thread.currentThread(), th);
+//    owner.compareAndSet(Thread.currentThread(), th);
+    owner.set(th);
   }
   
   public boolean isOwnedBy(Thread th) {

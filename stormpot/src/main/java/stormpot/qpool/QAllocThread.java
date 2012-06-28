@@ -134,7 +134,7 @@ class QAllocThread<T extends Poolable> extends Thread {
     }
     slot.poison = null;
     slot.obj = null;
-    slot.owner.set(null);
+    slot.owner.set(this);
   }
 
   boolean await(Timeout timeout) throws InterruptedException {
