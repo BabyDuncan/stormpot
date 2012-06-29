@@ -70,6 +70,8 @@ implements LifecycledPool<T>, ResizablePool<T> {
       live.offer(allocThread.POISON_PILL);
       throw new IllegalStateException("pool is shut down");
     }
+    // TODO access to poison isn't thread-safe because we might be racing
+    // with the allocation thread if this is our TLR slot.
     if (slot.poison != null) {
       Exception poison = slot.poison;
       kill(slot);
