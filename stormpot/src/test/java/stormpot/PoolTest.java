@@ -21,6 +21,7 @@ import static stormpot.UnitKit.*;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -113,7 +114,7 @@ public class PoolTest {
   @Test(timeout = 300)
   @Theory public void
   claimMustReturnIfWithinTimeout(PoolFixture fixture)
-  throws Exception {
+      throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(config);
     Poolable obj = pool.claim(longTimeout);
     assertThat(obj, not(nullValue()));
@@ -155,9 +156,41 @@ public class PoolTest {
   depletedPoolReturnsNullEvenIfClaimedObjectsAreExpired(PoolFixture fixture)
       throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(
-        config.setExpiration(oneMsTTL));
+        config.setExpiration(fiveMsTTL));
+    pool.claim(longTimeout).release();
     pool.claim(longTimeout); // depleted
-    spinwait(2); // claimed object now expired
+    spinwait(6); // claimed object now expired
+    Poolable obj = pool.claim(shortTimeout);
+    assertThat(obj, nullValue());
+  }
+  
+  /**
+   * When a pool has been depleted and all the objects are claimed by other
+   * threads, and they are all expired, then the pool must still return null
+   * when we try to claim from it.
+   * We test for this by creating a pool with a single object and a very short
+   * TTL. Then we have another thread deplete the pool. This is done by
+   * claiming, releasing and then claiming again, to inspire the pool to try
+   * caching or aligning the object with the given thread, if it wants to.
+   * Then we wait for the claimed object to expire, and then we try to claim.
+   * The pool should still be depleted, and so we should get a null back.
+   * @param fixture
+   * @throws Exception
+   */
+  @Test(timeout = 300)
+  @Theory public void
+  depletedPoolReturnsNullEvenIfObjectsClaimedByDifferentThreadAreExpired(
+      PoolFixture fixture) throws Exception {
+    final Pool<GenericPoolable> pool = fixture.initPool(
+        config.setExpiration(fiveMsTTL));
+    fork(new Callable<Void>() {
+      public Void call() throws Exception {
+        pool.claim(longTimeout).release();
+        pool.claim(longTimeout);
+        return null;
+      }
+    }).join(); // depleted
+    spinwait(6); // claimed object now expired
     Poolable obj = pool.claim(shortTimeout);
     assertThat(obj, nullValue());
   }
@@ -506,7 +539,7 @@ public class PoolTest {
   @Test(timeout = 300, expected = IllegalStateException.class)
   @Theory public void
   preventClaimFromPoolThatIsShutDown(PoolFixture fixture)
-  throws Exception {
+      throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(config);
     pool.claim(longTimeout).release();
     shutdown(pool);
@@ -561,7 +594,7 @@ public class PoolTest {
   @Test(timeout = 300)
   @Theory public void
   mustDeallocateExpiredPoolablesAndStayWithinSizeLimit(PoolFixture fixture)
-  throws Exception {
+      throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(
         config.setExpiration(oneMsTTL));
     pool.claim(longTimeout).release();
@@ -589,7 +622,7 @@ public class PoolTest {
   @Test(timeout = 300)
   @Theory public void
   mustDeallocateAllPoolablesBeforeShutdownTaskReturns(PoolFixture fixture)
-  throws Exception {
+      throws Exception {
     Pool<GenericPoolable> pool = fixture.initPool(config.setSize(2));
     Poolable p1 = pool.claim(longTimeout);
     Poolable p2 = pool.claim(longTimeout);

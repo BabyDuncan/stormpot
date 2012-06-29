@@ -76,7 +76,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
       throw new PoolException("allocation failed", poison);
     }
     if (shutdown) { // TODO racy coverage
-      kill(slot);
+      kill(slot); // TODO might be TLR-claimed by someone; mustn't kill it!!!
       throw new IllegalStateException("pool is shut down");
     }
   }
@@ -133,7 +133,9 @@ implements LifecycledPool<T>, ResizablePool<T> {
         return null;
       }
       checkForPoison(slot);
-    } while (isInvalid(slot) || !slot.claim()); // TODO don't kill claimed objs
+      // Again, attempt to claim before checking validity. We mustn't kill
+      // objects that are already claimed by someone else.
+    } while (!slot.claim() || isInvalid(slot));
     slot.tlrClaimed = false;
     if (slot.takeOwnership()) {
       QSlot<T> oldTlr = tlr.get();
