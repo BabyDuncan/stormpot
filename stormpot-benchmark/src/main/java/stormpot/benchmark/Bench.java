@@ -77,4 +77,8 @@ public abstract class Bench {
   public String getName() {
     return getClass().getSimpleName();
   }
+  
+  public long trialCount() {
+    return trials.sum();
+  }
 }
