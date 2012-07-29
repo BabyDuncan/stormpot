@@ -50,11 +50,21 @@ public abstract class Benchmark {
     long end = 0;
     for (int i = 0; i < cycles; i++) {
       start = System.currentTimeMillis();
-      bench.claimAndRelease();
+      claimAndRelease(bench);
       end = System.currentTimeMillis();
       bench.recordTime(end - start);
     }
     return end;
+  }
+
+  private static void claimAndRelease(Bench bench) throws Exception {
+    try {
+      bench.claimAndRelease();
+    } catch (Exception e) {
+      System.err.println(
+          "Unexpected exception are this many ops: " + bench.trialCount());
+      throw e;
+    }
   }
 
   protected abstract String getBenchmarkName();
