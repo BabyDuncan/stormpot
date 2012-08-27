@@ -78,7 +78,7 @@ public class PoolTest {
       new TimeExpiration(1, TimeUnit.MILLISECONDS);
   private static final Expiration<Poolable> fiveMsTTL =
       new TimeExpiration(5, TimeUnit.MILLISECONDS);
-  private static final Timeout longTimeout = new Timeout(1, TimeUnit.SECONDS);
+  private static final Timeout longTimeout = new Timeout(1, TimeUnit.HOURS);
   private static final Timeout mediumTimeout = new Timeout(10, TimeUnit.MILLISECONDS);
   private static final Timeout shortTimeout = new Timeout(1, TimeUnit.MILLISECONDS);
   private static final Timeout zeroTimeout = new Timeout(0, TimeUnit.MILLISECONDS);

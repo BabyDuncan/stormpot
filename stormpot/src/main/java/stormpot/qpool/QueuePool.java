@@ -67,6 +67,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
 
   private void checkForPoison(QSlot<T> slot) {
     if (slot == allocThread.POISON_PILL) {
+      slot.state.set(QSlot.LIVE);
       live.offer(allocThread.POISON_PILL);
       throw new IllegalStateException("pool is shut down");
     }
@@ -97,6 +98,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
   }
 
   private boolean isInvalid(QSlot<T> slot) {
+    checkForPoison(slot);
     boolean invalid = true;
     RuntimeException exception = null;
     try {
@@ -115,8 +117,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
   }
 
   protected void kill(QSlot<T> slot) {
-    if (!slot.isOwnedBy(allocThread)) {
-      slot.transferOwnership(allocThread);
+    if (slot.kill()) {
       dead.offer(slot);
     }
   }
@@ -127,14 +128,14 @@ implements LifecycledPool<T>, ResizablePool<T> {
       throw new IllegalArgumentException("timeout cannot be null");
     }
     QSlot<T> slot = tlr.get();
-    if (slot != null && slot.isOurs()) {
-      checkForPoison(slot);
+    if (slot != null && slot.claim()) {
+//      checkForPoison(slot);
       // Attempt the claim before checking the validity, because we might
       // already have claimed it.
       // If we checked validity before claiming, then we might find that it
       // had expired, and throw it in the dead queue, causing a claimed
       // Poolable to be deallocated before it is released.
-      if (slot.claim() && !isInvalid(slot)) {
+      if (!isInvalid(slot)) {
         slot.tlrClaimed = true;
         return slot.obj;
       }
@@ -147,18 +148,12 @@ implements LifecycledPool<T>, ResizablePool<T> {
         // we timed out while taking from the queue - just return null
         return null;
       }
-      checkForPoison(slot);
+//      checkForPoison(slot);
       // Again, attempt to claim before checking validity. We mustn't kill
       // objects that are already claimed by someone else.
     } while (!slot.claim() || isInvalid(slot));
     slot.tlrClaimed = false;
-    if (slot.takeOwnership()) {
-      QSlot<T> oldTlr = tlr.get();
-      if (oldTlr != null && oldTlr != slot && oldTlr.isOurs()) {
-        oldTlr.transferOwnership(null);
-      }
-      tlr.set(slot);
-    }
+    tlr.set(slot);
     return slot.obj;
   }
 

@@ -29,7 +29,7 @@ class QAllocThread<T extends Poolable> extends Thread {
   /**
    * Special slot used to signal that the pool has been shut down.
    */
-  final QSlot<T> POISON_PILL = new QSlot<T>(null);
+  final QSlot<T> POISON_PILL;
   
   private final CountDownLatch completionLatch;
   private final BlockingQueue<QSlot<T>> live;
@@ -48,6 +48,7 @@ class QAllocThread<T extends Poolable> extends Thread {
     this.size = 0;
     this.live = live;
     this.dead = dead;
+    POISON_PILL = new QSlot<T>(live);
   }
 
   @Override
@@ -82,6 +83,7 @@ class QAllocThread<T extends Poolable> extends Thread {
     } catch (InterruptedException _) {
       // this means we've been shut down.
       // let the poison-pill enter the system
+      POISON_PILL.makeLive();
       live.offer(POISON_PILL);
     }
   }
@@ -134,7 +136,6 @@ class QAllocThread<T extends Poolable> extends Thread {
     }
     slot.poison = null;
     slot.obj = null;
-    slot.owner.set(this);
   }
 
   boolean await(Timeout timeout) throws InterruptedException {

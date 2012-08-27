@@ -16,7 +16,6 @@
 package stormpot.qpool;
 
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import stormpot.Poolable;
@@ -24,11 +23,10 @@ import stormpot.Slot;
 import stormpot.SlotInfo;
 
 class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
-  static final int LIVE = 0;
-  static final int CLAIMED = 1;
+  static final Object LIVE = new Object();
+  static final Object DEAD = new Object();
   final BlockingQueue<QSlot<T>> live;
-  final AtomicInteger claimed;
-  final AtomicReference<Thread> owner;
+  final AtomicReference<Object> state;
   T obj;
   Exception poison;
   long created;
@@ -37,12 +35,11 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   
   public QSlot(BlockingQueue<QSlot<T>> live) {
     this.live = live;
-    this.claimed = new AtomicInteger(CLAIMED);
-    this.owner = new AtomicReference<Thread>();
+    this.state = new AtomicReference<Object>(DEAD);
   }
   
   public boolean claim() {
-    boolean success = claimed.compareAndSet(LIVE, CLAIMED);
+    boolean success = state.compareAndSet(LIVE, Thread.currentThread());
     if (success) {
       claims++;
     }
@@ -50,26 +47,17 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
 
   public void release(Poolable obj) {
-    if (claimed.compareAndSet(CLAIMED, LIVE) && !tlrClaimed) {
+    if (state.compareAndSet(Thread.currentThread(), LIVE) && !tlrClaimed) {
       live.offer(this);
     }
   }
   
-  public boolean takeOwnership() {
-    Thread currentThread = Thread.currentThread();
-    if (owner.compareAndSet(null, currentThread)) {
-      return true;
-    }
-    Thread owningThread = owner.get();
-    if (!owningThread.isAlive()) {
-      return owner.compareAndSet(owningThread, currentThread);
-    }
-    return false;
+  public boolean kill() {
+    return state.compareAndSet(Thread.currentThread(), DEAD);
   }
   
   public boolean makeLive() {
-    owner.set(null);
-    return claimed.compareAndSet(CLAIMED, LIVE);
+    return state.compareAndSet(DEAD, LIVE);
   }
 
   @Override
@@ -85,18 +73,5 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   @Override
   public T getPoolable() {
     return obj;
-  }
-
-  public boolean isOurs() {
-    return owner.get() == Thread.currentThread();
-  }
-  
-  public void transferOwnership(Thread th) {
-//    owner.compareAndSet(Thread.currentThread(), th);
-    owner.set(th);
-  }
-  
-  public boolean isOwnedBy(Thread th) {
-    return owner.get() == th;
   }
 }
