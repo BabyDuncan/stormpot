@@ -62,7 +62,7 @@ public abstract class Benchmark {
       bench.claimAndRelease();
     } catch (Exception e) {
       System.err.println(
-          "Unexpected exception are this many ops: " + bench.trialCount());
+          "Unexpected exception at this many ops: " + bench.trialCount());
       throw e;
     }
   }
