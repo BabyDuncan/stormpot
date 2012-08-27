@@ -14,7 +14,9 @@ public abstract class Bench {
   
   public void claimAndRelease() throws Exception {
     Object obj = claim();
-    assert obj != null: "The pool gave me a sad null.";
+//    if (obj == null) {
+//      throw new AssertionError("obj was null");
+//    }
     release(obj);
   }
   

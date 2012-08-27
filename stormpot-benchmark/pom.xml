@@ -106,7 +106,6 @@
 <!--                     <argument>-XX:+PrintInlining</argument> -->
 <!--                     <argument>-XX:+LogCompilation</argument> -->
                     <argument>-server</argument>
-                    <argument>-ea</argument>
                     <argument>-Dthread.count=${thread.count}</argument>
                     <argument>-Dreport.msg=${report.msg}</argument>
                     <argument>-Dpools=${pools}</argument>
