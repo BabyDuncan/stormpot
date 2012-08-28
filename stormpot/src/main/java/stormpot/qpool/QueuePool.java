@@ -129,6 +129,11 @@ implements LifecycledPool<T>, ResizablePool<T> {
     }
     QSlot<T> slot = tlr.get();
     if (slot != null && slot.claim()) {
+      // TODO We mustn't claim slots that have been deallocated!
+      // Our TLR-slot might have been tried by another thread and found
+      // to have expired, then put on the dead-queue and been deallocated.
+      // We absolutely must make sure to discard these zombie slots.
+      
 //      checkForPoison(slot);
       // Attempt the claim before checking the validity, because we might
       // already have claimed it.
