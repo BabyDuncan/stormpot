@@ -46,6 +46,8 @@ implements LifecycledPool<T>, ResizablePool<T> {
   private final BlockingQueue<QSlot<T>> dead;
   private final QAllocThread<T> allocThread;
   private final Expiration<? super T> deallocRule;
+  // TODO consider making it a ThreadLocal of Ref<QSlot>, hoping that maybe
+  // writes to it will be faster in not requiring a ThreadLocal look-up.
   private final ThreadLocal<QSlot<T>> tlr;
   private volatile boolean shutdown = false;
   
@@ -67,7 +69,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
 
   private void checkForPoison(QSlot<T> slot) {
     if (slot == allocThread.POISON_PILL) {
-      slot.state.set(QSlot.LIVE);
+      slot.claim2live();
       live.offer(allocThread.POISON_PILL);
       throw new IllegalStateException("pool is shut down");
     }
@@ -117,7 +119,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
   }
 
   protected void kill(QSlot<T> slot) {
-    if (slot.kill()) {
+    if (slot.claim2dead()) {
       dead.offer(slot);
     }
   }

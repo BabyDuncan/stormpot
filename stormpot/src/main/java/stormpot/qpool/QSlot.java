@@ -24,9 +24,10 @@ import stormpot.SlotInfo;
 
 class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   static final Object LIVE = new Object();
+  static final Object CLAIMED = new Object();
   static final Object DEAD = new Object();
   final BlockingQueue<QSlot<T>> live;
-  final AtomicReference<Object> state;
+  private final AtomicReference<Object> state;
   T obj;
   Exception poison;
   long created;
@@ -39,7 +40,7 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
   
   public boolean claim() {
-    boolean success = state.compareAndSet(LIVE, Thread.currentThread());
+    boolean success = live2claim();
     if (success) {
       claims++;
     }
@@ -47,19 +48,35 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
 
   public void release(Poolable obj) {
-    if (state.compareAndSet(Thread.currentThread(), LIVE) && !tlrClaimed) {
+    if (claim2live() && !tlrClaimed) {
       live.offer(this);
     }
   }
   
-  public boolean kill() {
-    return state.compareAndSet(Thread.currentThread(), DEAD);
+  public boolean claim2live() {
+    return cas(CLAIMED, LIVE);
   }
   
-  public boolean makeLive() {
-    return state.compareAndSet(DEAD, LIVE);
+  public boolean live2claim() {
+    return cas(LIVE, CLAIMED);
+  }
+  
+  public boolean claim2dead() {
+    return cas(CLAIMED, DEAD);
+  }
+  
+  public boolean dead2live() {
+    return cas(DEAD, LIVE);
+  }
+  
+  public boolean live2dead() {
+    return cas(LIVE, DEAD);
   }
 
+  private boolean cas(Object expected, Object update) {
+    return state.compareAndSet(expected, update);
+  }
+  
   @Override
   public long getAgeMillis() {
     return System.currentTimeMillis() - created;
@@ -73,5 +90,9 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   @Override
   public T getPoolable() {
     return obj;
+  }
+
+  public boolean isDead() {
+    return state.get() == DEAD;
   }
 }
