@@ -69,6 +69,11 @@ class QAllocThread<T extends Poolable> extends Thread {
         QSlot<T> slot = dead.poll(deadPollTimeout, TimeUnit.MILLISECONDS);
         // TODO must ensure that the given slot has successfully transitioned
         // to the dead state.
+        boolean isDead = slot == null || slot.isDead();
+//        System.err.println("## slot is dead: " + isDead);
+        if (!isDead) {
+          throw new AssertionError("Slot was supposed to be dead: " + slot);
+        }
         if (size > targetSize) {
           slot = slot == null? live.poll() : slot;
           if (slot != null) {
