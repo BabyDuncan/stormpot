@@ -27,6 +27,14 @@ import stormpot.Timeout;
 
 class QAllocThread<T extends Poolable> extends Thread {
   /**
+   * The amount of time, in nanoseconds, to wait for more work when the
+   * shutdown process has deallocated all the dead and live slots it could
+   * get its hands on, but there are still (claimed) slots left.
+   */
+  private final static long shutdownPauseNanos =
+      TimeUnit.MILLISECONDS.toNanos(10);
+  
+  /**
    * Special slot used to signal that the pool has been shut down.
    */
   final QSlot<T> POISON_PILL;
@@ -106,7 +114,7 @@ class QAllocThread<T extends Poolable> extends Thread {
         slot = null;
       }
       if (slot == null) {
-        LockSupport.parkNanos(10000000); // 10 millis
+        LockSupport.parkNanos(shutdownPauseNanos);
       } else {
         if (slot.isDead() || slot.live2dead()) {
           dealloc(slot);
