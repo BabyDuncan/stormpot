@@ -42,10 +42,12 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     QSlotState qSlotState = state.get();
     if (qSlotState == tlrClaimed) {
       if (!claimTlr2live()) {
+        // TODO this assertion no longer holds: must loop instead!
         throw new AssertionError(
             "transition from tlr-claimed to live must not fail");
       }
     } else if (claim2live()) {
+//      System.out.println("live.offer " + this);
       live.offer(this);
     } else {
       throw new PoolException("Slot release from bad state: " + qSlotState);
@@ -66,6 +68,10 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   
   public boolean live2claimTlr() {
     return cas(living, tlrClaimed);
+  }
+  
+  public boolean claimTlr2claim() {
+    return cas(tlrClaimed, claimed);
   }
   
   public boolean claim2dead() {
@@ -109,5 +115,10 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
 
   public void incrementClaims() {
     claims++;
+  }
+
+  @Override
+  public String toString() {
+    return "[" + super.toString() + " " + state.get() + "]";
   }
 }

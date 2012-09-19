@@ -73,6 +73,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
       throw new IllegalArgumentException("timeout cannot be null");
     }
     QSlot<T> slot = tlr.get();
+//    System.out.println("tlr.poll " + slot);
     // Note that the TLR slot at this point might have been tried by another
     // thread, found to be expired, put on the dead-queue and deallocated.
     // We handle this because slots always transition to the dead state before
@@ -105,16 +106,31 @@ implements LifecycledPool<T>, ResizablePool<T> {
       slot.claimTlr2live();
     }
     long deadline = timeout.getDeadline();
+    boolean notClaimed = true;
     do {
       long timeoutLeft = timeout.getTimeLeft(deadline);
       slot = live.poll(timeoutLeft, timeout.getBaseUnit());
+//      System.out.println("live.poll " + slot);
       if (slot == null) {
         // we timed out while taking from the queue - just return null
         return null;
       }
       // Again, attempt to claim before checking validity. We mustn't kill
       // objects that are already claimed by someone else.
-    } while (!slot.live2claim() || isInvalid(slot));
+      
+      // TODO tlr-claimed slots have been pulled from the live-queue but
+      // cannot be claimed. They must somehow re-enter the queue system, so
+      // that we don't forget about them.
+      do {
+        notClaimed = !slot.live2claim();
+      } while (notClaimed && !slot.claimTlr2claim());
+      /*
+      if (notClaimed) {
+        // transition from a tlr-claim to a normal claim, so that the
+        // subsequent release will let the slot re-enter the live-queue.
+        slot.claimTlr2claim();
+      }//*/
+    } while (notClaimed || isInvalid(slot));
     slot.incrementClaims();
     tlr.set(slot);
     return slot.obj;
@@ -141,6 +157,13 @@ implements LifecycledPool<T>, ResizablePool<T> {
 
   private void checkForPoison(QSlot<T> slot) {
     if (slot == allocThread.POISON_PILL) {
+      // The poison pill means the pool has been shut down. The pill was
+      // transitioned from live to claimed just prior to this check, so we
+      // must transition it back to live and put it back into the live-queue
+      // before throwing our exception.
+      // Because we always throw when we see it, it will never become a
+      // tlr-slot, and so we don't need to worry about transitioning from
+      // tlr-claimed to live.
       slot.claim2live();
       live.offer(allocThread.POISON_PILL);
       throw new IllegalStateException("pool is shut down");
@@ -164,6 +187,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
     // dead-queue. This helps ensure that a slot will only ever be in at most
     // one queue.
     if (slot.claim2dead()) {
+//      System.out.println("dead.offer " + slot);
       dead.offer(slot);
     }
   }
