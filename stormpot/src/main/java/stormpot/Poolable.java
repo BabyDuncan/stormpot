@@ -58,6 +58,14 @@ public interface Poolable {
    * A call to this method MUST delegate to a call to
    * {@link Slot#release(Poolable)} on the Slot object for which this
    * Poolable was allocated, giving itself as the Poolable parameter.
+   * <p>
+   * Note that it is an error to release a Poolable that is not claimed (has
+   * already been released) or is or was claimed by another thread. Pools
+   * are free to throw {@link PoolException} if they can detect this, but this
+   * is not guaranteed. In fact, no specific behaviour is specified for this
+   * particular situation, so infinite loops and dead-locks are possible
+   * reactions as well.
+   * @see Slot#release(Poolable)
    */
   void release();
 }
