@@ -15,28 +15,27 @@
  */
 package stormpot.qpool;
 
+import static stormpot.qpool.QSlotState.*;
+
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
+import stormpot.PoolException;
 import stormpot.Poolable;
 import stormpot.Slot;
 import stormpot.SlotInfo;
 
 class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
-  static final Object LIVE = new Object();
-  static final Object CLAIMED = new Object();
-  static final Object DEAD = new Object();
   final BlockingQueue<QSlot<T>> live;
-  private final AtomicReference<Object> state;
+  private final AtomicReference<QSlotState> state;
   T obj;
   Exception poison;
   long created;
   long claims;
-  boolean tlrClaimed = false;
   
   public QSlot(BlockingQueue<QSlot<T>> live) {
     this.live = live;
-    this.state = new AtomicReference<Object>(DEAD);
+    this.state = new AtomicReference<QSlotState>(dead);
   }
   
   public boolean claim() {
@@ -46,34 +45,55 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     }
     return success;
   }
+  
+  public boolean claimTlr() {
+    boolean success = live2claim();
+    if (success) {
+      claims++;
+    }
+    return success;
+  }
 
   public void release(Poolable obj) {
-    if (claim2live() && !tlrClaimed) {
+    QSlotState qSlotState = state.get();
+    if (qSlotState == tlrClaimed) {
+      claimTlr2live();
+    } else if (claim2live()) {
       live.offer(this);
+    } else {
+      throw new PoolException("Slot release from bad state: " + qSlotState);
     }
   }
   
   public boolean claim2live() {
-    return cas(CLAIMED, LIVE);
+    return cas(claimed, living);
+  }
+  
+  public boolean claimTlr2live() {
+    return cas(tlrClaimed, living);
   }
   
   public boolean live2claim() {
-    return cas(LIVE, CLAIMED);
+    return cas(living, claimed);
+  }
+  
+  public boolean live2claimTlr() {
+    return cas(living, tlrClaimed);
   }
   
   public boolean claim2dead() {
-    return cas(CLAIMED, DEAD);
+    return cas(claimed, dead);
   }
   
   public boolean dead2live() {
-    return cas(DEAD, LIVE);
+    return cas(dead, living);
   }
   
   public boolean live2dead() {
-    return cas(LIVE, DEAD);
+    return cas(living, dead);
   }
 
-  private boolean cas(Object expected, Object update) {
+  private boolean cas(QSlotState expected, QSlotState update) {
     return state.compareAndSet(expected, update);
   }
   
@@ -93,6 +113,6 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
 
   public boolean isDead() {
-    return state.get() == DEAD;
+    return state.get() == dead;
   }
 }

@@ -137,14 +137,13 @@ implements LifecycledPool<T>, ResizablePool<T> {
     // slot.claim() call will fail.
     // Then we will eventually find another slot from the live-queue that we
     // can claim and make our new TLR slot.
-    if (slot != null && slot.claim()) {
+    if (slot != null && slot.claimTlr()) {
       // Attempt the claim before checking the validity, because we might
       // already have claimed it.
       // If we checked validity before claiming, then we might find that it
       // had expired, and throw it in the dead queue, causing a claimed
       // Poolable to be deallocated before it is released.
       if (!isInvalid(slot)) {
-        slot.tlrClaimed = true;
         return slot.obj;
       }
     }
@@ -159,7 +158,6 @@ implements LifecycledPool<T>, ResizablePool<T> {
       // Again, attempt to claim before checking validity. We mustn't kill
       // objects that are already claimed by someone else.
     } while (!slot.claim() || isInvalid(slot));
-    slot.tlrClaimed = false;
     tlr.set(slot);
     return slot.obj;
   }
