@@ -130,13 +130,14 @@ implements LifecycledPool<T>, ResizablePool<T> {
       throw new IllegalArgumentException("timeout cannot be null");
     }
     QSlot<T> slot = tlr.get();
+    // Note that the TLR slot at this point might have been tried by another
+    // thread, found to be expired, put on the dead-queue and deallocated.
+    // We handle this because slots always transition to the dead state before
+    // they are put on the dead-queue, and if they are dead, then the
+    // slot.claim() call will fail.
+    // Then we will eventually find another slot from the live-queue that we
+    // can claim and make our new TLR slot.
     if (slot != null && slot.claim()) {
-      // TODO We mustn't claim slots that have been deallocated!
-      // Our TLR-slot might have been tried by another thread and found
-      // to have expired, then put on the dead-queue and been deallocated.
-      // We absolutely must make sure to discard these zombie slots.
-      
-//      checkForPoison(slot);
       // Attempt the claim before checking the validity, because we might
       // already have claimed it.
       // If we checked validity before claiming, then we might find that it
@@ -155,7 +156,6 @@ implements LifecycledPool<T>, ResizablePool<T> {
         // we timed out while taking from the queue - just return null
         return null;
       }
-//      checkForPoison(slot);
       // Again, attempt to claim before checking validity. We mustn't kill
       // objects that are already claimed by someone else.
     } while (!slot.claim() || isInvalid(slot));
