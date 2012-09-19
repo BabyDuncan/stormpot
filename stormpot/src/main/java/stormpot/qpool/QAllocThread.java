@@ -70,7 +70,7 @@ class QAllocThread<T extends Poolable> extends Thread {
         if (size > targetSize) {
           slot = slot == null? live.poll() : slot;
           if (slot != null) {
-            if (slot.live2dead()) {
+            if (slot.isDead() || slot.live2dead()) {
               dealloc(slot);
             } else {
               live.offer(slot);
