@@ -143,15 +143,29 @@ implements LifecycledPool<T>, ResizablePool<T> {
     // slot.claim() call will fail.
     // Then we will eventually find another slot from the live-queue that we
     // can claim and make our new TLR slot.
-    if (slot != null && slot.claimTlr()) {
+    if (slot != null && slot.live2claimTlr()) {
       // Attempt the claim before checking the validity, because we might
       // already have claimed it.
       // If we checked validity before claiming, then we might find that it
       // had expired, and throw it in the dead queue, causing a claimed
       // Poolable to be deallocated before it is released.
       if (!isInvalid(slot)) {
+        slot.incrementClaims();
         return slot.obj;
       }
+      // We managed to tlr-claim the slot, but it turned out to be no good.
+      // That means we now have to transition it from tlr-claimed to dead.
+      // However, since we didn't pull it off of the live-queue, it might still
+      // be in the live-queue. And since it might be in the live-queue, it
+      // can't be put on the dead-queue. And since it can't be put on the
+      // dead-queue, it also cannot transition to the dead state.
+      // This effectively means that we have to transition it back to the live
+      // state, and then let some pull it off of the live-queue, check it
+      // again, and only then put it on the dead-queue.
+      // It's cumbersome, but we have to do it this way, in order to prevent
+      // duplicate entries in the queues. Otherwise we'd have a nasty memory
+      // leak on our hands.
+      slot.claimTlr2live();
     }
     long deadline = timeout.getDeadline();
     do {
@@ -163,7 +177,8 @@ implements LifecycledPool<T>, ResizablePool<T> {
       }
       // Again, attempt to claim before checking validity. We mustn't kill
       // objects that are already claimed by someone else.
-    } while (!slot.claim() || isInvalid(slot));
+    } while (!slot.live2claim() || isInvalid(slot));
+    slot.incrementClaims();
     tlr.set(slot);
     return slot.obj;
   }

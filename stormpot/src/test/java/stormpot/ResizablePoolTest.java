@@ -188,6 +188,6 @@ public class ResizablePoolTest {
     // now the released objects should not cause reallocations, so claim
     // returns null (it's still depleted) and allocation count stays put
     assertThat(pool.claim(shortTimeout), nullValue());
-    assertThat(allocator.allocations(), is(startingSize));
+    assertThat(allocator.allocations(), is(startingSize)); // TODO racy (expect 5, might be 6)
   }
 }

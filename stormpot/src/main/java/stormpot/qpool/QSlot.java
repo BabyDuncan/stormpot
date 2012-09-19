@@ -38,22 +38,6 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     this.state = new AtomicReference<QSlotState>(dead);
   }
   
-  public boolean claim() {
-    boolean success = live2claim();
-    if (success) {
-      claims++;
-    }
-    return success;
-  }
-  
-  public boolean claimTlr() {
-    boolean success = live2claim();
-    if (success) {
-      claims++;
-    }
-    return success;
-  }
-
   public void release(Poolable obj) {
     QSlotState qSlotState = state.get();
     if (qSlotState == tlrClaimed) {
@@ -85,6 +69,10 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     return cas(claimed, dead);
   }
   
+  public boolean claimTlr2dead() {
+    return cas(tlrClaimed, dead);
+  }
+  
   public boolean dead2live() {
     return cas(dead, living);
   }
@@ -114,5 +102,9 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
 
   public boolean isDead() {
     return state.get() == dead;
+  }
+
+  public void incrementClaims() {
+    claims++;
   }
 }
