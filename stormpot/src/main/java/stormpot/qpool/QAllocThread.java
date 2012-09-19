@@ -69,11 +69,6 @@ class QAllocThread<T extends Poolable> extends Thread {
         QSlot<T> slot = dead.poll(deadPollTimeout, TimeUnit.MILLISECONDS);
         // TODO must ensure that the given slot has successfully transitioned
         // to the dead state.
-        boolean isDead = slot == null || slot.isDead();
-//        System.err.println("## slot is dead: " + isDead);
-        if (!isDead) {
-          throw new AssertionError("Slot was supposed to be dead: " + slot);
-        }
         if (size > targetSize) {
           slot = slot == null? live.poll() : slot;
           if (slot != null) {
@@ -115,7 +110,11 @@ class QAllocThread<T extends Poolable> extends Thread {
       if (slot == null) {
         LockSupport.parkNanos(10000000); // 10 millis
       } else {
-        dealloc(slot);
+        if (slot.isDead() || slot.live2dead()) {
+          dealloc(slot);
+        } else {
+          live.offer(slot);
+        }
       }
     }
   }
@@ -137,6 +136,9 @@ class QAllocThread<T extends Poolable> extends Thread {
   }
 
   private void dealloc(QSlot<T> slot) {
+    if (!slot.isDead()) {
+      throw new AssertionError("Cannot deallocate non-dead slot: " + slot);
+    }
     size--;
     try {
       if (slot.poison == null) {
