@@ -41,7 +41,10 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   public void release(Poolable obj) {
     QSlotState qSlotState = state.get();
     if (qSlotState == tlrClaimed) {
-      claimTlr2live();
+      if (!claimTlr2live()) {
+        throw new AssertionError(
+            "transition from tlr-claimed to live must not fail");
+      }
     } else if (claim2live()) {
       live.offer(this);
     } else {

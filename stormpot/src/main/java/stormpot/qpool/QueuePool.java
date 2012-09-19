@@ -73,21 +73,6 @@ implements LifecycledPool<T>, ResizablePool<T> {
       live.offer(allocThread.POISON_PILL);
       throw new IllegalStateException("pool is shut down");
     }
-    // TODO access to poison isn't thread-safe because we might be racing
-    // with the allocation thread if this is our TLR slot.
-    // The case:
-    //  - Thread1 claim a slot and it is now its TLR slot
-    //  - then it expires and Thread1 release it
-    //  - the slot goes into the dead-queue
-    //  - the reallocation fails and the slot gains poison
-    //  - Thread1 read the poison field
-    //  - Thread2 tries to claim it from the live-queue
-    //  - Thread2 then throws it into the dead-queue because it has poison
-    //  - the slot is successfully reallocated
-    //  - Thread2 claims the slot
-    //  - now Thread1 comes back to life
-    //  - Thread1 throws the slot into the dead-queue because of the poison
-    //  - the slot is deallocated even though Thread2 has it claimed.
     if (slot.poison != null) {
       Exception poison = slot.poison;
       kill(slot);
