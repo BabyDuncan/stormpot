@@ -94,7 +94,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
       throw new PoolException("allocation failed", poison);
     }
     if (shutdown) { // TODO racy coverage
-      kill(slot); // TODO might be TLR-claimed by someone; mustn't kill it!!!
+      kill(slot);
       throw new IllegalStateException("pool is shut down");
     }
   }
@@ -119,6 +119,12 @@ implements LifecycledPool<T>, ResizablePool<T> {
   }
 
   protected void kill(QSlot<T> slot) {
+    // The use of claim2dead() here ensures that we don't put slots into the
+    // dead-queue more than once. Many threads might have this as their
+    // TLR-slot and try to tlr-claim it, but only when a slot has been normally
+    // claimed, that is, pulled off the live-queue, can it be put into the
+    // dead-queue. This helps ensure that a slot will only ever be in at most
+    // one queue.
     if (slot.claim2dead()) {
       dead.offer(slot);
     }
