@@ -67,54 +67,6 @@ implements LifecycledPool<T>, ResizablePool<T> {
     allocThread.start();
   }
 
-  private void checkForPoison(QSlot<T> slot) {
-    if (slot == allocThread.POISON_PILL) {
-      slot.claim2live();
-      live.offer(allocThread.POISON_PILL);
-      throw new IllegalStateException("pool is shut down");
-    }
-    if (slot.poison != null) {
-      Exception poison = slot.poison;
-      kill(slot);
-      throw new PoolException("allocation failed", poison);
-    }
-    if (shutdown) { // TODO racy coverage
-      kill(slot);
-      throw new IllegalStateException("pool is shut down");
-    }
-  }
-
-  private boolean isInvalid(QSlot<T> slot) {
-    checkForPoison(slot);
-    boolean invalid = true;
-    RuntimeException exception = null;
-    try {
-      invalid = deallocRule.hasExpired(slot);
-    } catch (RuntimeException ex) {
-      exception = ex;
-    }
-    if (invalid) {
-      // it's invalid - into the dead queue with it and continue looping
-      kill(slot);
-      if (exception != null) {
-        throw exception;
-      }
-    }
-    return invalid;
-  }
-
-  protected void kill(QSlot<T> slot) {
-    // The use of claim2dead() here ensures that we don't put slots into the
-    // dead-queue more than once. Many threads might have this as their
-    // TLR-slot and try to tlr-claim it, but only when a slot has been normally
-    // claimed, that is, pulled off the live-queue, can it be put into the
-    // dead-queue. This helps ensure that a slot will only ever be in at most
-    // one queue.
-    if (slot.claim2dead()) {
-      dead.offer(slot);
-    }
-  }
-
   public T claim(Timeout timeout) throws PoolException,
       InterruptedException {
     if (timeout == null) {
@@ -166,6 +118,54 @@ implements LifecycledPool<T>, ResizablePool<T> {
     slot.incrementClaims();
     tlr.set(slot);
     return slot.obj;
+  }
+
+  private boolean isInvalid(QSlot<T> slot) {
+    checkForPoison(slot);
+    boolean invalid = true;
+    RuntimeException exception = null;
+    try {
+      invalid = deallocRule.hasExpired(slot);
+    } catch (RuntimeException ex) {
+      exception = ex;
+    }
+    if (invalid) {
+      // it's invalid - into the dead queue with it and continue looping
+      kill(slot);
+      if (exception != null) {
+        throw exception;
+      }
+    }
+    return invalid;
+  }
+
+  private void checkForPoison(QSlot<T> slot) {
+    if (slot == allocThread.POISON_PILL) {
+      slot.claim2live();
+      live.offer(allocThread.POISON_PILL);
+      throw new IllegalStateException("pool is shut down");
+    }
+    if (slot.poison != null) {
+      Exception poison = slot.poison;
+      kill(slot);
+      throw new PoolException("allocation failed", poison);
+    }
+    if (shutdown) { // TODO racy coverage
+      kill(slot);
+      throw new IllegalStateException("pool is shut down");
+    }
+  }
+
+  protected void kill(QSlot<T> slot) {
+    // The use of claim2dead() here ensures that we don't put slots into the
+    // dead-queue more than once. Many threads might have this as their
+    // TLR-slot and try to tlr-claim it, but only when a slot has been normally
+    // claimed, that is, pulled off the live-queue, can it be put into the
+    // dead-queue. This helps ensure that a slot will only ever be in at most
+    // one queue.
+    if (slot.claim2dead()) {
+      dead.offer(slot);
+    }
   }
 
   public Completion shutdown() {
