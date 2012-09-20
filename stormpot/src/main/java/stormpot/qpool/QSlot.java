@@ -39,7 +39,20 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
   
   public void release(Poolable obj) {
-    QSlotState qSlotState = state.get();
+    QSlotState qSlotState = null;
+    //*
+    do {
+      qSlotState = state.get();
+      if (qSlotState != tlrClaimed && qSlotState != claimed) {
+        throw new PoolException("Slot release from bad state: " + qSlotState);
+      }
+    } while (!(qSlotState == claimed? claim2live() : claimTlr2live()));
+    if (qSlotState == claimed) {
+      live.offer(this);
+    }
+    //*/
+    /*
+    qSlotState = state.get();
     if (qSlotState == tlrClaimed) {
       if (!claimTlr2live()) {
         // TODO this assertion no longer holds: must loop instead!
@@ -51,7 +64,7 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
       live.offer(this);
     } else {
       throw new PoolException("Slot release from bad state: " + qSlotState);
-    }
+    }//*/
   }
   
   public boolean claim2live() {
