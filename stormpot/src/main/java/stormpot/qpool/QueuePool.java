@@ -78,7 +78,7 @@ implements LifecycledPool<T>, ResizablePool<T> {
     // thread, found to be expired, put on the dead-queue and deallocated.
     // We handle this because slots always transition to the dead state before
     // they are put on the dead-queue, and if they are dead, then the
-    // slot.claim() call will fail.
+    // slot.live2claimTlr() call will fail.
     // Then we will eventually find another slot from the live-queue that we
     // can claim and make our new TLR slot.
     if (slot != null && slot.live2claimTlr()) {
@@ -117,19 +117,26 @@ implements LifecycledPool<T>, ResizablePool<T> {
       }
       // Again, attempt to claim before checking validity. We mustn't kill
       // objects that are already claimed by someone else.
-      
-      // TODO tlr-claimed slots have been pulled from the live-queue but
-      // cannot be claimed. They must somehow re-enter the queue system, so
-      // that we don't forget about them.
       do {
+        // We pulled a slot off the queue. If we can transition it to the
+        // claimed state, then it means it wasn't tlr-claimed and we got it.
+        // Note that the slot at this point be in any queue.
         notClaimed = !slot.live2claim();
+        // If we fail to claim it, then it means that it is tlr-claimed by
+        // someone else. Note that the slot at this point is not in any
+        // queue, and we can't put it back into the live-queue, because that
+        // could lead to busy-looping on tlr-claimed slots which would waste
+        // CPU cycles when the pool is depleted. We must instead make sure that
+        // tlr-claimer transition to a proper claimer, such that he will make
+        // sure to release the slot back into the live-queue once he is done
+        // with it. However, as we are contemplating this, he might have
+        // already released it again, which means that it is live and we can't
+        // make our transition because it is now too late for him to put it
+        // back into the live-queue. On the other hand, if the slot is now
+        // live, it means that we can claim it for our selves.
+        // So we loop on this.
+        // TODO infinite loop: the slot might be dead.
       } while (notClaimed && !slot.claimTlr2claim());
-      /*
-      if (notClaimed) {
-        // transition from a tlr-claim to a normal claim, so that the
-        // subsequent release will let the slot re-enter the live-queue.
-        slot.claimTlr2claim();
-      }//*/
     } while (notClaimed || isInvalid(slot));
     slot.incrementClaims();
     tlr.set(slot);
