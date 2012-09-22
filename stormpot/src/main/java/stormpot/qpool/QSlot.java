@@ -32,6 +32,7 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   Exception poison;
   long created;
   long claims;
+  Thread owner;
   
   public QSlot(BlockingQueue<QSlot<T>> live) {
     this.live = live;
@@ -42,6 +43,12 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     QSlotState qSlotState = null;
     do {
       qSlotState = state.get();
+      Thread claimer = owner;
+      Thread releaser = Thread.currentThread();
+      if (claimer != releaser) {
+        throw new PoolException(
+            "Expected release from claimer " + claimer + " but was " + releaser);
+      }
       if (qSlotState != tlrClaimed && qSlotState != claimed) {
         throw new PoolException("Slot release from bad state: " + qSlotState);
       }
@@ -60,11 +67,15 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
   }
   
   public boolean live2claim() {
-    return cas(living, claimed);
+    boolean cas = cas(living, claimed);
+    if (cas) owner = Thread.currentThread();
+    return cas;
   }
   
   public boolean live2claimTlr() {
-    return cas(living, tlrClaimed);
+    boolean cas = cas(living, tlrClaimed);
+    if (cas) owner = Thread.currentThread();
+    return cas;
   }
   
   public boolean claimTlr2claim() {
