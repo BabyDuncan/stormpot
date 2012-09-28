@@ -86,10 +86,6 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
     return cas(claimed, dead);
   }
   
-  public boolean claimTlr2dead() {
-    return cas(tlrClaimed, dead);
-  }
-  
   public boolean dead2live() {
     return cas(dead, living);
   }
@@ -119,6 +115,10 @@ class QSlot<T extends Poolable> implements Slot, SlotInfo<T> {
 
   public boolean isDead() {
     return state.get() == dead;
+  }
+  
+  public QSlotState getState() {
+    return state.get();
   }
 
   public void incrementClaims() {

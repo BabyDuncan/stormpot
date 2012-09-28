@@ -103,7 +103,12 @@ implements LifecycledPool<T>, ResizablePool<T> {
       // It's cumbersome, but we have to do it this way, in order to prevent
       // duplicate entries in the queues. Otherwise we'd have a nasty memory
       // leak on our hands.
-      slot.claimTlr2live();
+      
+      
+      // TODO might have transitioned from tlr-claimed to claimed!
+      // We also might not have thrown it into the dead-queue because this
+      // transition happened just after our isInvalid check... ugh...
+//      slot.claimTlr2live();
     }
     long deadline = timeout.getDeadline();
     boolean notClaimed = true;
@@ -138,6 +143,11 @@ implements LifecycledPool<T>, ResizablePool<T> {
         // the live-queue. On the other hand, if the slot is now live, it means
         // that we can claim it for our selves. So we loop on this.
       } while (notClaimed && !slot.claimTlr2claim());
+      // If we could not live->claimed but tlr-claimed->claimed, then
+      // we mustn't check isInvalid, because that might send it to the
+      // dead-queue *while somebody else thinks they've TLR-claimed it!*
+      // We handle this in the outer loop: if we couldn't claim, then we retry
+      // the loop.
     } while (notClaimed || isInvalid(slot));
     slot.incrementClaims();
     tlr.set(slot);
@@ -194,9 +204,18 @@ implements LifecycledPool<T>, ResizablePool<T> {
     // claimed, that is, pulled off the live-queue, can it be put into the
     // dead-queue. This helps ensure that a slot will only ever be in at most
     // one queue.
-    if (slot.claim2dead()) {
-//      System.out.println("dead.offer " + slot);
-      dead.offer(slot);
+//    if (slot.claim2dead()) {
+//      dead.offer(slot);
+//    }
+    for (;;) {
+      QSlotState state = slot.getState();
+      if (state == QSlotState.claimed && slot.claim2dead()) {
+        dead.offer(slot);
+        return;
+      }
+      if (state == QSlotState.tlrClaimed && slot.claimTlr2live()) {
+        return;
+      }
     }
   }
 
