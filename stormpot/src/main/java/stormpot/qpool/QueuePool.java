@@ -73,7 +73,6 @@ implements LifecycledPool<T>, ResizablePool<T> {
       throw new IllegalArgumentException("timeout cannot be null");
     }
     QSlot<T> slot = tlr.get();
-//    System.out.println("tlr.poll " + slot);
     // Note that the TLR slot at this point might have been tried by another
     // thread, found to be expired, put on the dead-queue and deallocated.
     // We handle this because slots always transition to the dead state before
@@ -103,19 +102,12 @@ implements LifecycledPool<T>, ResizablePool<T> {
       // It's cumbersome, but we have to do it this way, in order to prevent
       // duplicate entries in the queues. Otherwise we'd have a nasty memory
       // leak on our hands.
-      
-      
-      // TODO might have transitioned from tlr-claimed to claimed!
-      // We also might not have thrown it into the dead-queue because this
-      // transition happened just after our isInvalid check... ugh...
-//      slot.claimTlr2live();
     }
     long deadline = timeout.getDeadline();
     boolean notClaimed = true;
     do {
       long timeoutLeft = timeout.getTimeLeft(deadline);
       slot = live.poll(timeoutLeft, timeout.getBaseUnit());
-//      System.out.println("live.poll " + slot);
       if (slot == null) {
         // we timed out while taking from the queue - just return null
         return null;
@@ -204,9 +196,6 @@ implements LifecycledPool<T>, ResizablePool<T> {
     // claimed, that is, pulled off the live-queue, can it be put into the
     // dead-queue. This helps ensure that a slot will only ever be in at most
     // one queue.
-//    if (slot.claim2dead()) {
-//      dead.offer(slot);
-//    }
     for (;;) {
       QSlotState state = slot.getState();
       if (state == QSlotState.claimed && slot.claim2dead()) {
